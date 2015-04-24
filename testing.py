@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
-import os
-import io
-import struct
 # Deal with py2 and py3 differences
 try: # this only works in py2.7
     import configparser
 except ImportError:
     import ConfigParser as configparser
-import mtproto
-
-
+from mtproto.Session import Session
+from mtproto.Transport import TCPTransport
+from time import sleep
+from mtproto import TL
 
 config = configparser.ConfigParser()
 # Check if credentials is correctly loaded (when it doesn't read anything it returns [])
@@ -19,9 +17,8 @@ if not config.read('credentials'):
 ip = config.get('App data', 'ip_address')
 port = config.getint('App data', 'port')
 
-Session = mtproto.Session(ip, port)
+message = TL.serialize_obj('msgs_ack', msg_ids=[1,2,3])
 
-Session.create_auth_key()
-
-future_salts = Session.method_call('get_future_salts', num=3)
-print(future_salts)
+server1 = TCPTransport(ip, port)
+S = Session(transport=server1)
+sleep(10)

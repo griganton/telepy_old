@@ -1,4 +1,4 @@
-import crypt
+import crypttools
 
 class Message():
   pass
