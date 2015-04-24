@@ -21,4 +21,5 @@ message = TL.serialize_obj('msgs_ack', msg_ids=[1,2,3])
 
 server1 = TCPTransport(ip, port)
 S = Session(transport=server1)
-sleep(10)
+S.timedelta = -10000
+S.method_call('ping', ping_id=0)

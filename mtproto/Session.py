@@ -41,8 +41,9 @@ class Session:
 
         # Subscribing functions
         self.subscribe("NewSession", self.new_session_created)
-
         self.future_salts = self.method_call('get_future_salts', num=3)
+
+
 
     def send_process(self):
         while True:
@@ -68,7 +69,6 @@ class Session:
                     message = TL.serialize_obj('msgs_ack', msg_ids=acks)
                     encrypted_message = self.encrypt_message(message)
                     self.transport.send(encrypted_message)
-                    self.method_call('msgs_state_req', msg_ids=acks)
 
 
     def recv_process(self):
@@ -82,10 +82,10 @@ class Session:
                     for message_box in server_answer.data['messages']:
                         message = Message(message_box['msg_id'], message_box['seqno'], message_box['body'])
                         self.recv_queue.put(message)
-                        print("     %s" % message.data.name)
+                        print("     %s" % message.data.type)
                 else:
                         self.recv_queue.put(server_answer)
-                        print("   recv: %s received" % server_answer.data.name)
+                        print("   recv: %s received" % server_answer.data.type)
             except socket.timeout:
                 pass
 
@@ -104,6 +104,7 @@ class Session:
                     func(server_answer)
                     print("   subs: Got object %s" % server_answer.data.type)
                 except KeyError:
+                    print(server_answer.data)
                     self.recv_queue.put(server_answer)
                     sleep(1)
 
