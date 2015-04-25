@@ -43,15 +43,15 @@ class CryptLayer(Layer):
         # serializing the data
         message_data = message.serialize()
 
-        if self.auth_key is None or self.server_salt is None:
+        if self.auth_key is None:
             # Unencrypted data send
-            print("CryptLayer: sending plaintext message:" + message_data)
+            print("CryptLayer: sending plaintext message")
             message_bytes = (b'\x00\x00\x00\x00\x00\x00\x00\x00' +
                              struct.pack('<QI', message.msg_id, len(message_data)) +
                              message_data)
         else:
             # Encrypted data send
-            print("CryptLayer: sending crypted message:" + message.body)
+            print("CryptLayer: sending crypted message")
             encrypted_data = (self.server_salt +
                               message.session_id +
                               message.msg_id +
@@ -71,6 +71,7 @@ class CryptLayer(Layer):
         auth_key_id = packet[0:8]
         if auth_key_id == b'\x00\x00\x00\x00\x00\x00\x00\x00':
             # No encryption - Plain text
+            print("CryptLayer: received plaintext message")
             (message_id, message_length) = struct.unpack("<8sI", packet[8:20])
             data = packet[20:20+message_length]
 
@@ -95,7 +96,7 @@ class CryptLayer(Layer):
             seq_no = struct.unpack("<I", decrypted_data[24:28])[0]
             message_data_length = struct.unpack("<I", decrypted_data[28:32])[0]
             data = decrypted_data[32:32+message_data_length]
-
+            print("CryptLayer: received crypted message")
             # deserializing data
             answer = Message.deserialize(data)
 

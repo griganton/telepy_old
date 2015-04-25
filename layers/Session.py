@@ -1,13 +1,13 @@
+from layers.Layer import Layer
+from mtproto.Message import Message
 from mtproto import crypt_tools
 from mtproto import prime
 from mtproto import TL
 from time import time, sleep
-from mtproto.Message import Message
 
 import queue
 import os
-from layers.Layer import Layer
-
+import io
 
 class SessionLayer(Layer):
     """ Manages encryption and message frames """
@@ -16,6 +16,7 @@ class SessionLayer(Layer):
         self.seq_no = 0
         self.timedelta = 0
         self.session_id = os.urandom(8)
+        self.subs_queue = queue.Queue()
         self.method_subscribe_dict = {}
 
         # creating and starting data exchange threads
@@ -27,17 +28,17 @@ class SessionLayer(Layer):
     def subscribe(self, result_name, func):
         self.method_subscribe_dict[result_name] = func
 
+
     def run(self):
         while True:
             try:
                 sleep(1)
-                server_answer = self.upstream_queue.get()
+                server_answer = self.subs_queue.get()
                 try:
-                    func = self.method_subscribe_dict[server_answer.data.type]
+                    func = self.method_subscribe_dict[server_answer.body.type]
                     func(server_answer)
-                    print("   subs: Got object %s" % server_answer.data.type)
+                    print("   subs: Got object %s" % server_answer.body.type)
                 except KeyError:
-                    #self.recv_queue.put(server_answer)
                     pass
             except queue.Empty:
                 pass
@@ -48,16 +49,27 @@ class SessionLayer(Layer):
         def got_it(server_answer):
             q.put(server_answer)
         self.subscribe(name, got_it)
-        return q.get(timeout=timeout)
+        try:
+            return q.get(timeout=timeout)
+        except queue.Empty:
+            return None
 
     def method_call(self, predicate, **kwargs):
         return_type = TL.tl.method_name[predicate].type
-        self.send(TL.Method(predicate, return_type, **kwargs))
-        try:
-            server_answer = self.wait_for_answer(, timeout=5)
-            return server_answer.data
-        except queue.Empty:
-            pass
+        self.send(TL.Method(predicate, return_type, kwargs))
+        answer = self.wait_for_answer(return_type)
+        return answer.body
+
+    def on_upstream_message(self, message):
+        self.subs_queue.put(message)
+
+    def set_auth_key(self, auth_key):
+        self.auth_key = auth_key
+        self.auth_key_id = crypt_tools.SHA(self.auth_key)[-8:] if self.auth_key else None
+
+    def create_auth_key_id(self):
+        # TODO: docstring
+        return crypt_tools.SHA(self.auth_key)[-8:]
 
     def send(self, tl_object):
         message_id = int((time() + self.timedelta)*2**30)*4
@@ -65,6 +77,7 @@ class SessionLayer(Layer):
                           msg_id=message_id,
                           seq_no=self.seq_no,
                           message_body=tl_object)
+        print("Session: send message %s type" % tl_object.return_type)
         self.to_lower(message)
 
     def create_auth_key(self):
@@ -158,9 +171,9 @@ class SessionLayer(Layer):
 
         for i in range(1, 8): # retry when dh_gen_retry or dh_gen_fail
             set_client_dh_params_answer = self.method_call('set_client_DH_params',
-                                                       nonce=nonce,
-                                                       server_nonce=server_nonce,
-                                                       encrypted_data=encrypted_data)
+                                                           nonce=nonce,
+                                                           server_nonce=server_nonce,
+                                                           encrypted_data=encrypted_data)
             auth_key = pow(g_a, b, dh_prime)
             auth_key_str = crypt_tools.long_to_bytes(auth_key)
             auth_key_sha = crypt_tools.SHA(auth_key_str)
@@ -190,11 +203,4 @@ class SessionLayer(Layer):
             else:
                 raise Exception("Response Error")
 
-    def set_auth_key(self, auth_key):
-        self.auth_key = auth_key
-        self.auth_key_id = SHA(self.auth_key)[-8:] if self.auth_key else None
-
-    def create_auth_key_id(self):
-        # TODO: docstring
-        return SHA(self.auth_key)[-8:]
 

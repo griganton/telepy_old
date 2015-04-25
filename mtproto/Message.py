@@ -17,5 +17,6 @@ class Message:
     @staticmethod
     def deserialize(msg_bytes):
         # Deserialize
+        ans = TL.deserialize(io.BytesIO(msg_bytes))
         print("Message: Unpacking data")
-        return TL.deserialize(io.BytesIO(msg_bytes))
+        return ans

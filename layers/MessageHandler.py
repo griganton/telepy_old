@@ -15,12 +15,13 @@ class MessageHandler(Layer):
 
     def on_downstream_message(self, message):
         # TODO: attach pending message acks to downstream message
+        print("Message handler: sending message")
         self.to_lower(message)
 
     def on_upstream_message(self, message):
         assert isinstance(message, Message)
         if message.body.type == "msg_container":
-
+            print("Message handler: Сontainer with contents:")
             print("   recv: Сontainer with contents:")
             for message_box in message.body.data['messages']:
                 # If we have got message container, we should unpack it to separate messages and send upper.
@@ -34,12 +35,13 @@ class MessageHandler(Layer):
                 # Every message from container have to be acknowledged
                 if message_from_box.msg_id is not None:
                     self.pending_acks.append(message_from_box.msg_id)
-            else:
-                # not a container
-                self.to_upper(message)
-                # Crypted message has to be acknowledged
-                if message.msg_id is not None:
-                    self.pending_acks.append(message.msg_id)
+        else:
+            print("Message handler: received message")
+            # not a container
+            self.to_upper(message)
+            # Crypted message has to be acknowledged
+            if message.msg_id is not None:
+                self.pending_acks.append(message.msg_id)
 
 # Containers are messages containing several other messages.
 # Used for the ability to transmit several RPC queries and/or service messages at the same time,

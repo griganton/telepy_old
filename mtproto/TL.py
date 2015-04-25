@@ -33,13 +33,6 @@ class TlMethod:
         self.method = json_dict['method']
         self.params = json_dict['params']
 
-class TLObject(dict):
-    def __init__(self, tl_elem):
-        self.name = tl_elem.predicate
-
-    def __repr__(self):
-        return self.name + dict.__repr__(self)
-
 class TL:
     def __init__(self, filename):
         with open(filename, 'r') as f:
@@ -122,12 +115,18 @@ def deserialize(bytes_io, type_=None, subtype=None):
     assert isinstance(bytes_io, io.BytesIO)
 
     # Built-in bare types
-    if   type_ == 'int':    x = struct.unpack('<i', bytes_io.read(4))[0]
-    elif type_ == '#':      x = struct.unpack('<I', bytes_io.read(4))[0]
-    elif type_ == 'long':   x = struct.unpack('<q', bytes_io.read(8))[0]
-    elif type_ == 'double': x = struct.unpack('<d', bytes_io.read(8))[0]
-    elif type_ == 'int128': x = bytes_io.read(16)
-    elif type_ == 'int256': x = bytes_io.read(32)
+    if type_ == 'int':
+        return struct.unpack('<i', bytes_io.read(4))[0]
+    elif type_ == '#':
+        return struct.unpack('<I', bytes_io.read(4))[0]
+    elif type_ == 'long':
+        return struct.unpack('<q', bytes_io.read(8))[0]
+    elif type_ == 'double':
+        return struct.unpack('<d', bytes_io.read(8))[0]
+    elif type_ == 'int128':
+        return bytes_io.read(16)
+    elif type_ == 'int256':
+        return bytes_io.read(32)
     elif type_ == 'string' or type_ == 'bytes':
         l = struct.unpack('<B', bytes_io.read(1))[0]
         assert l <= 254  # In general, 0xFF byte is not allowed here
@@ -136,19 +135,19 @@ def deserialize(bytes_io, type_=None, subtype=None):
             long_len = struct.unpack('<I', bytes_io.read(3)+b'\x00')[0]
             x = bytes_io.read(long_len)
             bytes_io.read(-long_len % 4)  # skip padding bytes
+            return x
         else:
             # We have a short string
             x = bytes_io.read(l)
             bytes_io.read(-(l+1) % 4)  # skip padding bytes
-        assert isinstance(x, bytes)
+            return x
     elif type_ == 'vector':
         assert subtype is not None
         count = struct.unpack('<l', bytes_io.read(4))[0]
-        x = [deserialize(bytes_io, type_=subtype) for i in range(count)]
+        return [deserialize(bytes_io, type_=subtype) for i in range(count)]
     else:
-        # known types
         try:
-        # Bare types
+            # Bare types
             tl_elem = tl.constructor_type[type_]
         except KeyError:
             # Boxed types
@@ -161,16 +160,16 @@ def deserialize(bytes_io, type_=None, subtype=None):
 
         base_boxed_types = ["Vector t", "Int", "Long", "Double", "String", "Int128", "Int256"]
         if tl_elem.type in base_boxed_types:
-            x = deserialize(bytes_io, type_=tl_elem.predicate, subtype=subtype)
+            return deserialize(bytes_io, type_=tl_elem.predicate, subtype=subtype)
         else:  # other types
-            x = TLObject(tl_elem)
+            parameters = {}
             for arg in tl_elem.params:
-                x[arg['name']] = deserialize(bytes_io, type_=arg['type'], subtype=arg['subtype'])
-    return x
+                parameters[arg['name']] = deserialize(bytes_io, type_=arg['type'], subtype=arg['subtype'])
+            return Object(name=tl_elem.predicate, type_=tl_elem.type, parameters=parameters)
 
 
 class Object:
-    def __init__(self, name, type_, **parameters):
+    def __init__(self, name, type_, parameters):
         self.name = name
         self.type = type_
         self.params = parameters
@@ -178,12 +177,17 @@ class Object:
     def serialize(self):
         return serialize_obj(self.name, **self.params)
 
+    def __getitem__(self, item):
+        return self.params[item]
 
 class Method:
-    def __init__(self, predicate, return_type, **parameters):
+    def __init__(self, predicate, return_type, parameters):
         self.predicate = predicate
         self.return_type = return_type
         self.params = parameters
 
     def serialize(self):
         return serialize_method(self.predicate, **self.params)
+
+    def __getitem__(self, item):
+        return self.params[item]

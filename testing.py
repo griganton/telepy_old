@@ -4,7 +4,6 @@ try: # this only works in py2.7
     import configparser
 except ImportError:
     import ConfigParser as configparser
-from mtproto.Session import Session
 from layers.Crypt import CryptLayer
 from layers.MessageHandler import MessageHandler
 from layers.Transport import TCPTransportLayer
@@ -20,7 +19,7 @@ if not config.read('credentials'):
 ip = config.get('App data', 'ip_address')
 port = config.getint('App data', 'port')
 
-
+# collecting stack
 tcptransport = TCPTransportLayer(ip, port)
 cryptlayer = CryptLayer(underlying_layer=tcptransport)
 messagehandler = MessageHandler(underlying_layer=cryptlayer)

@@ -22,7 +22,7 @@ class TCPTransportLayer(Layer):
 
     def on_downstream_message(self, message):
         # TODO: docstring
-        print("TCPLayer: sending message: " + message)
+        print("TCPLayer: sending message")
         step1 = struct.pack('<II', len(message)+12, self.number) + message
         step2 = step1 + struct.pack('<I', crc32(step1))
         self.socket.send(step2)
@@ -49,7 +49,7 @@ class TCPTransportLayer(Layer):
         if not crc32(packet_length_data + packet[0:-4]) == struct.unpack('<I', packet[-4:])[0]:
             raise Exception("CRC32 was not correct!")
         payload = packet[4:-4]
-        print("TCPLayer: received message: " + message)
+        print("TCPLayer: received message" )
         self.to_upper(payload)
 
 # TODO: Short TCP transport
