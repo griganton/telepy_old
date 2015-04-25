@@ -24,3 +24,5 @@ tcptransport = TCPTransportLayer(ip, port)
 cryptlayer = CryptLayer(underlying_layer=tcptransport)
 messagehandler = MessageHandler(underlying_layer=cryptlayer)
 session = SessionLayer(underlying_layer=messagehandler)
+
+session.method_call("get_future_salts", num=3)

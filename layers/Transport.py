@@ -41,7 +41,7 @@ class TCPTransportLayer(Layer):
         packet_length_data = self.socket.recv(4)  # reads how many bytes to read
 
         if len(packet_length_data) < 4:
-            raise Exception("Nothing in the socket!")
+            raise Exception("Nothing in the socket! "+ packet_length_data)
         packet_length = struct.unpack("<I", packet_length_data)[0]
         packet = self.socket.recv(packet_length - 4)  # read the rest of bytes from socket
         x = struct.unpack("<I", packet[:4])

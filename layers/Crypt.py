@@ -25,6 +25,10 @@ class CryptLayer(Layer):
         self.auth_key_id = None
         self.server_salt = None
 
+    def propagate_auth(self, auth_key, server_salt):
+        print("CryptLayer: Writing auth info")
+        self.set_session_info(auth_key, server_salt)
+
     def set_session_info(self, auth_key, server_salt):
         print("CryptLayer: got session parameters. Start sending crypted messages")
         self.auth_key = auth_key
@@ -54,9 +58,8 @@ class CryptLayer(Layer):
             print("CryptLayer: sending crypted message")
             encrypted_data = (self.server_salt +
                               message.session_id +
-                              message.msg_id +
-                              struct.pack('<II', message.seq_no, len(message.body)) +
-                              message.body)
+                              struct.pack('<QII',  message.msg_id, message.seq_no, len(message_data)) +
+                              message_data)
             message_key = SHA(encrypted_data)[-16:]
             padding = os.urandom((-len(encrypted_data)) % 16)
             aes_key, aes_iv = aes_calculate(self.auth_key, message_key, direction="to server")

@@ -1,47 +1,36 @@
-from layers.Layer import Layer
+from layers.Layer import LayerWithSubscribe
 from mtproto.Message import Message
 from mtproto import crypt_tools
 from mtproto import prime
 from mtproto import TL
-from time import time, sleep
+from time import time
 
 import queue
 import os
 import io
 
-class SessionLayer(Layer):
+class SessionLayer(LayerWithSubscribe):
     """ Manages encryption and message frames """
     def __init__(self, auth_key=None, server_salt=None, underlying_layer=None):
-        Layer.__init__(self, name="Session Layer", underlying_layer=underlying_layer)
+        LayerWithSubscribe.__init__(self, name="Session Layer", underlying_layer=underlying_layer)
         self.seq_no = 0
         self.timedelta = 0
         self.session_id = os.urandom(8)
         self.subs_queue = queue.Queue()
-        self.method_subscribe_dict = {}
 
+        self.subscribe('NewSession', self.new_session_created)
         # creating and starting data exchange threads
         self.auth_key, self.server_salt = auth_key, server_salt
         if auth_key is None or server_salt is None:
             self.auth_key, self.server_salt = self.create_auth_key()
         self.auth_key_id = self.create_auth_key_id()
+        self.propagate_auth(self.auth_key, self.server_salt)
 
-    def subscribe(self, result_name, func):
-        self.method_subscribe_dict[result_name] = func
+    def new_session_created(self, message):
+        print(message)
 
-
-    def run(self):
-        while True:
-            try:
-                sleep(1)
-                server_answer = self.subs_queue.get()
-                try:
-                    func = self.method_subscribe_dict[server_answer.body.type]
-                    func(server_answer)
-                    print("   subs: Got object %s" % server_answer.body.type)
-                except KeyError:
-                    pass
-            except queue.Empty:
-                pass
+    def propagate_auth(self, auth_key, server_salt):
+        self.underlying_layer.propagate_auth(auth_key, server_salt)
 
     def wait_for_answer(self, name, timeout=5):
         q = queue.Queue()
@@ -59,9 +48,6 @@ class SessionLayer(Layer):
         self.send(TL.Method(predicate, return_type, kwargs))
         answer = self.wait_for_answer(return_type)
         return answer.body
-
-    def on_upstream_message(self, message):
-        self.subs_queue.put(message)
 
     def set_auth_key(self, auth_key):
         self.auth_key = auth_key
@@ -202,5 +188,3 @@ class SessionLayer(Layer):
                 raise Exception("Auth Failed")
             else:
                 raise Exception("Response Error")
-
-

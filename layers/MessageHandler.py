@@ -9,6 +9,9 @@ class MessageHandler(Layer):
     # https://core.telegram.org/mtproto/service_messages_about_messages#acknowledgment-of-receipt
     # TODO: message id buffer and checks
 
+    def propagate_auth(self, auth_key, server_salt):
+        self.underlying_layer.propagate_auth(auth_key, server_salt)
+
     def __init__(self, underlying_layer=None):
         Layer.__init__(self, underlying_layer=underlying_layer)
         self.pending_acks = []
@@ -20,13 +23,12 @@ class MessageHandler(Layer):
 
     def on_upstream_message(self, message):
         assert isinstance(message, Message)
-        if message.body.type == "msg_container":
-            print("Message handler: Сontainer with contents:")
-            print("   recv: Сontainer with contents:")
-            for message_box in message.body.data['messages']:
+        if message.body.name == "msg_container":
+            print("Message handler: Received container with contents:")
+            for message_box in message.body['messages']:
                 # If we have got message container, we should unpack it to separate messages and send upper.
                 # So, if message container is empty, nothing will be sent upper.
-                print("        %s" % message.body.type)
+                print("         - %s" % message_box['body'].type)
                 message_from_box = Message(session_id=message.session_id,
                                            msg_id=message_box['msg_id'],
                                            seq_no=message_box['seqno'],

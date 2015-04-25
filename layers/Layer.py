@@ -7,29 +7,29 @@ class Layer:
         """Override the on_upstream_message(self, message)"""
         assert isinstance(underlying_layer, Layer) or underlying_layer is None
         self.underlying_layer = underlying_layer
-
         self.name = name
-        self.stack = None
         self.upstream_queue = queue.Queue()
         self.downstream_queue = queue.Queue()
         # start
-        WaitingProcess(self.downstream_queue, self.on_downstream_message).start()
+        WaitingProcess(self.downstream_queue, self.__on_downstream_message__wrapper).start()
         if underlying_layer is not None:
-            WaitingProcess(self.underlying_layer.upstream_queue, self.on_upstream_message).start()
+            WaitingProcess(self.underlying_layer.upstream_queue, self.__on_upstream_message_wrapper).start()
         # starting thread
         threading.Thread(target=self.run).start()
 
-    def set_stack(self, stack):
-        """setting stack"""
-        self.stack = stack
+    def __on_downstream_message__wrapper(self, message):
+        self.on_downstream_message(message)
+
+    def __on_upstream_message_wrapper(self, message):
+        self.on_upstream_message(message)
 
     def on_upstream_message(self, message):
         """Override me. Provides dummy functionality on default."""
-        self.to_lower(message)
+        self.to_upper(message)
 
     def on_downstream_message(self, message):
         """Override me. Provides dummy functionality on default."""
-        self.to_upper(message)
+        self.to_lower(message)
 
     def to_upper(self, message):
         """Override me. Provides dummy functionality on default."""
@@ -52,7 +52,6 @@ class WaitingProcess(threading.Thread):
         self.queue = queue_to_wait
         self.daemon = True
 
-
     def run(self):
         """Infinitely waiting for message from the queue.
            If queue is deleted, stops waiting and finishes thread."""
@@ -67,3 +66,21 @@ class WaitingProcess(threading.Thread):
                 # Queue does not exist
                 # Stop waiting
                 return
+
+
+class LayerWithSubscribe(Layer):
+    def __init__(self, *args, **kwargs):
+        Layer.__init__(self, *args, **kwargs)
+        self.__subscribe_dict = {}
+        # start
+
+    def __on_upstream_message_wrapper(self, message):
+        print(message.name)
+        if message.name in self.__subscribe_dict.keys():
+            self.__subscribe_dict[message.type](message)
+        else:
+            self.on_upstream_message(message)
+
+    def subscribe(self, result_name, func):
+        """Putting functions to subscribe list"""
+        self.__subscribe_dict[result_name] = func
