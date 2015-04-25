@@ -1,4 +1,6 @@
 __author__ = 'agrigoryev'
+__author__ = 'agrigoryev'
+__author__ = 'agrigoryev'
 from mtproto import Transport
 from mtproto import TL
 from mtproto import Crypt
@@ -13,27 +15,17 @@ import struct
 import threading
 import queue
 
+from layers.Layer import Layer
 
-class Session:
+class SessionLayer(Layer):
     """ Manages encryption and message frames """
 
     def __init__(self, transport, auth_key=None, server_salt=None):
         assert isinstance(transport, Transport.Transport)
-        self.transport = transport
         self.seq_no = 0
         self.timedelta = 0
         self.session_id = os.urandom(8)
-        self.method_subscribe_dict = {}
         # creating and starting data exchange threads
-        self.send_queue = queue.Queue()
-        self.recv_queue = queue.Queue()
-        self.pending_acks = []
-        self.send_thread = threading.Thread(name="Sending thread", target=self.send_process)
-        self.recv_thread = threading.Thread(name="Receiving thread", target=self.recv_process)
-        self.subs_thread = threading.Thread(name="Subscribe thread", target=self.subs_process)
-        self.send_thread.start()
-        self.recv_thread.start()
-        self.subs_thread.start()
 
         self.auth_key, self.server_salt = auth_key, server_salt
         if auth_key is None or server_salt is None:
@@ -43,7 +35,6 @@ class Session:
         # Subscribing functions
         self.subscribe("NewSession", self.new_session_created)
         self.future_salts = self.method_call('get_future_salts', num=3)
-
 
     def send_process(self):
         while True:
@@ -262,3 +253,84 @@ class Session:
         # TODO: docstring
         return SHA(self.auth_key)[-8:]
 
+__author__ = 'agrigoryev'
+import struct
+from time import time
+from mtproto.Session import Session
+from mtproto.Crypt import SHA, ige_encrypt, ige_decrypt
+from mtproto import TL
+import os
+import io
+
+
+class Message:
+    def __init__(self, session, message_body):
+        assert isinstance(session, Session)
+        self.session = session
+        self.msg_id = struct.pack('<Q', int((time()+self.session.timedelta)*2**30)*4)
+        self.seq_no = self.session.seq_no
+        self.session.seq_no += 2
+        self.body = message_body
+
+    def encrypt(self, message):
+        # TODO: docstring
+        assert isinstance(message, Message)
+        message_id = self.msg_id
+        message_data = self.body
+        if self.session.auth_key is None or self.session.server_salt is None:
+            # Unencrypted data send
+            message_bytes = (b'\x00\x00\x00\x00\x00\x00\x00\x00' +
+                             message_id +
+                             struct.pack('<I', len(message_data)) +
+                             message_data)
+        else:
+            # Encrypted data send
+            encrypted_data = (self.session.server_salt +
+                              self.session.session_id +
+                              message_id +
+                              struct.pack('<II', self.session.seq_no, len(message_data)) +
+                              message_data)
+            message_key = SHA(encrypted_data)[-16:]
+            padding = os.urandom((-len(encrypted_data)) % 16)
+            aes_key, aes_iv = aes_calculate(self.session, message_key, direction="to server")
+            message_bytes = (self.session.auth_key_id + message_key +
+                             ige_encrypt(encrypted_data+padding, aes_key, aes_iv))
+        return message_bytes
+
+    @classmethod
+    def decrypt(cls, session, packet):
+        # TODO: docstring
+        auth_key_id = packet[0:8]
+        if auth_key_id == b'\x00\x00\x00\x00\x00\x00\x00\x00':
+            # No encryption - Plain text
+            (message_id, message_length) = struct.unpack("<8sI", packet[8:20])
+            data = packet[20:20+message_length]
+            answer = TL.deserialize(io.BytesIO(data))
+            return Message(message_id, 0, answer)
+        elif auth_key_id == session.auth_key_id:
+            message_key = packet[8:24]
+            encrypted_data = packet[24:]
+            aes_key, aes_iv = aes_calculate(session, message_key, direction="from server")
+            decrypted_data = ige_decrypt(encrypted_data, aes_key, aes_iv)
+            assert decrypted_data[0:8] == session.server_salt
+            assert decrypted_data[8:16] == session.session_id
+            message_id = struct.unpack('<Q', decrypted_data[16:24])[0]
+            seq_no = struct.unpack("<I", decrypted_data[24:28])[0]
+            message_data_length = struct.unpack("<I", decrypted_data[28:32])[0]
+            data = decrypted_data[32:32+message_data_length]
+            answer = TL.deserialize(io.BytesIO(data))
+            return Message(message_id, seq_no, answer)
+        else:
+            raise Exception("Got unknown auth_key id %s instead of %s" % (auth_key_id, session.auth_key_id))
+struct.pack('<Q', int((time()+self.session.timedelta)*2**30)*4)
+
+def aes_calculate(session, msg_key, direction="to server"):
+    # TODO: docstring
+    x = (0 if direction == "to server" else 8)
+    sha1_a = SHA(msg_key + session.auth_key[x:x+32])
+    sha1_b = SHA(session.auth_key[x+32:x+48] + msg_key + session.auth_key[48+x:64+x])
+    sha1_c = SHA(session.auth_key[x+64:x+96] + msg_key)
+    sha1_d = SHA(msg_key + session.auth_key[x+96:x+128])
+    aes_key = sha1_a[0:8] + sha1_b[8:20] + sha1_c[4:16]
+    aes_iv = sha1_a[8:20] + sha1_b[0:8] + sha1_c[16:20] + sha1_d[0:8]
+    return aes_key, aes_iv

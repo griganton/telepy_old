@@ -1,5 +1,4 @@
 __author__ = 'agrigoryev'
-
 import os
 import struct
 import json
@@ -34,12 +33,9 @@ class TlMethod:
         self.method = json_dict['method']
         self.params = json_dict['params']
 
-
 class TLObject(dict):
     def __init__(self, tl_elem):
-        dict.__init__(self)
         self.name = tl_elem.predicate
-        self.type = tl_elem.type
 
     def __repr__(self):
         return self.name + dict.__repr__(self)
@@ -59,7 +55,6 @@ class TL:
             self.constructor_id[z.id] = z
             self.constructor_type[z.predicate] = z
 
-        # Read methods
         self.methods = TL_dict['methods']
         self.method_id = {}
         self.method_name = {}
@@ -81,10 +76,7 @@ def serialize_obj(type_, **kwargs):
         raise Exception("Could not extract type: %s" % type_)
     bytes_io.write(struct.pack('<i', tl_constructor.id))
     for arg in tl_constructor.params:
-        try:
-            serialize_param(bytes_io, type_=arg['type'], subtype=arg['subtype'], value=kwargs[arg['name']])
-        except KeyError:
-            serialize_param(bytes_io, type_=arg['type'], value=kwargs[arg['name']])
+        serialize_param(bytes_io, type_=arg['type'],  value=kwargs[arg['name']])
     return bytes_io.getvalue()
 
 
@@ -100,7 +92,7 @@ def serialize_method(type_, **kwargs):
     return bytes_io.getvalue()
 
 
-def serialize_param(bytes_io, type_, value, subtype=None):
+def serialize_param(bytes_io, type_, value):
     if type_ == "int":
         assert isinstance(value, Number)
         assert value.bit_length() <= 32
@@ -111,7 +103,7 @@ def serialize_param(bytes_io, type_, value, subtype=None):
     elif type_ in ["int128", "int256"]:
         assert isinstance(value, bytes)
         bytes_io.write(value)
-    elif type_ in ['string','bytes']:
+    elif type_ == 'string' or 'bytes':
         l = len(value)
         if l < 254: # short string format
             bytes_io.write(struct.pack('<b', l))  # 1 byte of string
@@ -122,15 +114,6 @@ def serialize_param(bytes_io, type_, value, subtype=None):
             bytes_io.write(struct.pack('<i', l)[:3])  # 3 bytes of string
             bytes_io.write(value) # string
             bytes_io.write(b'\x00'*(-l % 4))  # padding bytes
-    elif type_ == "Vector t":
-        tl_constructor = tl.constructor_type["vector"]
-        bytes_io.write(struct.pack('<i', tl_constructor.id))
-        count = len(value)
-        bytes_io.write(struct.pack('<l', count))
-        for item in value:
-            serialize_param(bytes_io, subtype, item)
-    else:
-        raise Exception("Don't know how to serialize")
 
 def deserialize(bytes_io, type_=None, subtype=None):
     """
@@ -186,3 +169,21 @@ def deserialize(bytes_io, type_=None, subtype=None):
     return x
 
 
+class Object:
+    def __init__(self, name, type_, **parameters):
+        self.name = name
+        self.type = type_
+        self.params = parameters
+
+    def serialize(self):
+        return serialize_obj(self.name, **self.params)
+
+
+class Method:
+    def __init__(self, predicate, return_type, **parameters):
+        self.predicate = predicate
+        self.return_type = return_type
+        self.params = parameters
+
+    def serialize(self):
+        return serialize_method(self.predicate, **self.params)
