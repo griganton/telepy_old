@@ -1,7 +1,6 @@
 from mtproto import TL
 import io
 
-
 class Message:
     def __init__(self, session_id, msg_id, seq_no, message_body=None):
         self.session_id = session_id

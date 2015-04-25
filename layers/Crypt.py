@@ -1,10 +1,8 @@
 __author__ = 'agrigoryev'
-from mtproto import TL
 from layers.Layer import Layer
 from mtproto.Message import Message
-from mtproto.Crypt import SHA, ige_encrypt, ige_decrypt
+from mtproto.crypt_tools import SHA, ige_encrypt, ige_decrypt
 import os
-import io
 import struct
 
 
@@ -49,8 +47,7 @@ class CryptLayer(Layer):
             # Unencrypted data send
             print("CryptLayer: sending plaintext message:" + message_data)
             message_bytes = (b'\x00\x00\x00\x00\x00\x00\x00\x00' +
-                             message.msg_id +
-                             struct.pack('<I', len(message_data)) +
+                             struct.pack('<QI', message.msg_id, len(message_data)) +
                              message_data)
         else:
             # Encrypted data send

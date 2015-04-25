@@ -1,10 +1,10 @@
 __author__ = 'agrigoryev'
 from mtproto import Transport
 from mtproto import TL
-from mtproto import Crypt
-from mtproto import Prime
+from mtproto import crypt_tools
+from mtproto import prime
 from time import time, sleep
-from mtproto.Crypt import SHA, ige_encrypt, ige_decrypt
+from mtproto.crypt_tools import SHA, ige_encrypt, ige_decrypt
 from mtproto.Message import Message
 import socket
 import os
@@ -142,17 +142,17 @@ class Session:
         public_key_fingerprint = ResPQ['server_public_key_fingerprints'][0]
 
         pq_bytes = ResPQ['pq']
-        pq = Crypt.bytes_to_long(pq_bytes)
+        pq = crypt_tools.bytes_to_long(pq_bytes)
 
-        [p, q] = Prime.primefactors(pq)
+        [p, q] = prime.primefactors(pq)
         if p > q: (p, q) = (q, p)
         assert p*q == pq and p < q
 
         print("Factorization %d = %d * %d" % (pq, p, q))
-        p_bytes = Crypt.long_to_bytes(p)
-        q_bytes = Crypt.long_to_bytes(q)
+        p_bytes = crypt_tools.long_to_bytes(p)
+        q_bytes = crypt_tools.long_to_bytes(q)
         f = open(os.path.join(os.path.dirname(__file__), "rsa.pub"))
-        key = Crypt.RSA.importKey(f.read())
+        key = crypt_tools.RSA.importKey(f.read())
 
         new_nonce = os.urandom(32)
         data = TL.serialize_obj('p_q_inner_data',
@@ -163,7 +163,7 @@ class Session:
                                 server_nonce=server_nonce,
                                 new_nonce=new_nonce)
 
-        sha_digest = Crypt.SHA(data)
+        sha_digest = crypt_tools.SHA(data)
         random_bytes = os.urandom(255-len(data)-len(sha_digest))
         to_encrypt = sha_digest + data + random_bytes
         encrypted_data = key.encrypt(to_encrypt, 0)[0]
@@ -181,10 +181,10 @@ class Session:
 
         encrypted_answer = server_dh_params['encrypted_answer']
 
-        tmp_aes_key = Crypt.SHA(new_nonce + server_nonce) + Crypt.SHA(server_nonce + new_nonce)[0:12]
-        tmp_aes_iv = Crypt.SHA(server_nonce + new_nonce)[12:20] + Crypt.SHA(new_nonce + new_nonce) + new_nonce[0:4]
+        tmp_aes_key = crypt_tools.SHA(new_nonce + server_nonce) + crypt_tools.SHA(server_nonce + new_nonce)[0:12]
+        tmp_aes_iv = crypt_tools.SHA(server_nonce + new_nonce)[12:20] + crypt_tools.SHA(new_nonce + new_nonce) + new_nonce[0:4]
 
-        answer_with_hash = Crypt.ige_decrypt(encrypted_answer, tmp_aes_key, tmp_aes_iv)
+        answer_with_hash = crypt_tools.ige_decrypt(encrypted_answer, tmp_aes_key, tmp_aes_iv)
 
         answer_hash = answer_with_hash[:20]
         answer = answer_with_hash[20:]
@@ -200,25 +200,25 @@ class Session:
         self.timedelta = server_time - time()
         print("Server-client time delta = %.1f s" % self.timedelta)
 
-        dh_prime = Crypt.bytes_to_long(dh_prime_str)
-        g_a = Crypt.bytes_to_long(g_a_str)
+        dh_prime = crypt_tools.bytes_to_long(dh_prime_str)
+        g_a = crypt_tools.bytes_to_long(g_a_str)
 
-        assert Prime.isprime(dh_prime)
+        assert prime.isprime(dh_prime)
         retry_id = 0
         b_str = os.urandom(256)
-        b = Crypt.bytes_to_long(b_str)
+        b = crypt_tools.bytes_to_long(b_str)
         g_b = pow(g, b, dh_prime)
 
-        g_b_str = Crypt.long_to_bytes(g_b)
+        g_b_str = crypt_tools.long_to_bytes(g_b)
 
         data = TL.serialize_obj('client_DH_inner_data',
                                 nonce=nonce,
                                 server_nonce=server_nonce,
                                 retry_id=retry_id,
                                 g_b=g_b_str)
-        data_with_sha = Crypt.SHA(data) + data
+        data_with_sha = crypt_tools.SHA(data) + data
         data_with_sha_padded = data_with_sha + os.urandom(-len(data_with_sha) % 16)
-        encrypted_data = Crypt.ige_encrypt(data_with_sha_padded, tmp_aes_key, tmp_aes_iv)
+        encrypted_data = crypt_tools.ige_encrypt(data_with_sha_padded, tmp_aes_key, tmp_aes_iv)
 
         for i in range(1, 8): # retry when dh_gen_retry or dh_gen_fail
             set_client_dh_params_answer = self.method_call('set_client_DH_params',
@@ -226,13 +226,13 @@ class Session:
                                                        server_nonce=server_nonce,
                                                        encrypted_data=encrypted_data)
             auth_key = pow(g_a, b, dh_prime)
-            auth_key_str = Crypt.long_to_bytes(auth_key)
-            auth_key_sha = Crypt.SHA(auth_key_str)
+            auth_key_str = crypt_tools.long_to_bytes(auth_key)
+            auth_key_sha = crypt_tools.SHA(auth_key_str)
             auth_key_aux_hash = auth_key_sha[:8]
 
-            new_nonce_hash1 = Crypt.SHA(new_nonce+b'\x01'+auth_key_aux_hash)[-16:]
-            new_nonce_hash2 = Crypt.SHA(new_nonce+b'\x02'+auth_key_aux_hash)[-16:]
-            new_nonce_hash3 = Crypt.SHA(new_nonce+b'\x03'+auth_key_aux_hash)[-16:]
+            new_nonce_hash1 = crypt_tools.SHA(new_nonce+b'\x01'+auth_key_aux_hash)[-16:]
+            new_nonce_hash2 = crypt_tools.SHA(new_nonce+b'\x02'+auth_key_aux_hash)[-16:]
+            new_nonce_hash3 = crypt_tools.SHA(new_nonce+b'\x03'+auth_key_aux_hash)[-16:]
 
             assert set_client_dh_params_answer['nonce'] == nonce
             assert set_client_dh_params_answer['server_nonce'] == server_nonce
@@ -241,7 +241,7 @@ class Session:
                 assert set_client_dh_params_answer['new_nonce_hash1'] == new_nonce_hash1
                 print("Diffie Hellman key exchange processed successfully")
 
-                server_salt = Crypt.strxor(new_nonce[0:8], server_nonce[0:8])
+                server_salt = crypt_tools.strxor(new_nonce[0:8], server_nonce[0:8])
                 print("Auth key generated")
                 return auth_key_str, server_salt
             elif set_client_dh_params_answer.name == 'dh_gen_retry':

@@ -4,11 +4,18 @@ from mtproto.Message import Message
 class MessageHandler(Layer):
     """ Handles messages - packing and unpacking message containers, sending message acks"""
     # TODO: gzipped data support
+    # https://core.telegram.org/mtproto/service_messages#packed-object
     # TODO: message acks
+    # https://core.telegram.org/mtproto/service_messages_about_messages#acknowledgment-of-receipt
+    # TODO: message id buffer and checks
 
     def __init__(self, underlying_layer=None):
         Layer.__init__(self, underlying_layer=underlying_layer)
         self.pending_acks = []
+
+    def on_downstream_message(self, message):
+        # TODO: attach pending message acks to downstream message
+        self.to_lower(message)
 
     def on_upstream_message(self, message):
         assert isinstance(message, Message)
@@ -16,7 +23,7 @@ class MessageHandler(Layer):
 
             print("   recv: Сontainer with contents:")
             for message_box in message.body.data['messages']:
-                # If we have got message container, we can unpack it to separate messages and send upper.
+                # If we have got message container, we should unpack it to separate messages and send upper.
                 # So, if message container is empty, nothing will be sent upper.
                 print("        %s" % message.body.type)
                 message_from_box = Message(session_id=message.session_id,
@@ -24,12 +31,13 @@ class MessageHandler(Layer):
                                            seq_no=message_box['seqno'],
                                            message_body=message_box['body'])
                 self.to_upper(message_from_box)
+                # Every message from container have to be acknowledged
                 if message_from_box.msg_id is not None:
                     self.pending_acks.append(message_from_box.msg_id)
             else:
                 # not a container
                 self.to_upper(message)
-                # prepare to send acks
+                # Crypted message has to be acknowledged
                 if message.msg_id is not None:
                     self.pending_acks.append(message.msg_id)
 

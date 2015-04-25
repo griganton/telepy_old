@@ -1,9 +1,6 @@
-__author__ = 'agrigoryev'
-
-__author__ = 'agrigoryev'
 import socket
 import struct
-from mtproto.Crypt import crc32
+from mtproto.crypt_tools import crc32
 from layers.Layer import Layer
 
 
@@ -11,13 +8,13 @@ class TCPTransportLayer(Layer):
     # TODO: docstring
     def __init__(self, ip, port):
         # TODO: docstring
-        Layer.__init__(self, name="TCPLayer")
         self.ip = ip
         self.port = port
         self.socket = socket.socket()
         self.socket.settimeout(5.0)
         self.number = 0
         self.connect()
+        Layer.__init__(self, name="TCPLayer")
 
     def connect(self):
         # TODO: docstring
@@ -32,7 +29,7 @@ class TCPTransportLayer(Layer):
         self.number += 1
 
     def run(self):
-        print("""Start listening the socket""")
+        print("""TCPLayer: Start listening the socket""")
         while True:
             try:
                 self.recv()
