@@ -11,13 +11,13 @@ class Layer:
         self.upstream_queue = queue.Queue()
         self.downstream_queue = queue.Queue()
         # start
-        WaitingProcess(self.downstream_queue, self.__on_downstream_message__wrapper).start()
+        WaitingProcess(self.downstream_queue, self.__on_downstream_message_wrapper).start()
         if underlying_layer is not None:
             WaitingProcess(self.underlying_layer.upstream_queue, self.__on_upstream_message_wrapper).start()
         # starting thread
         threading.Thread(target=self.run).start()
 
-    def __on_downstream_message__wrapper(self, message):
+    def __on_downstream_message_wrapper(self, message):
         self.on_downstream_message(message)
 
     def __on_upstream_message_wrapper(self, message):
@@ -66,21 +66,3 @@ class WaitingProcess(threading.Thread):
                 # Queue does not exist
                 # Stop waiting
                 return
-
-
-class LayerWithSubscribe(Layer):
-    def __init__(self, *args, **kwargs):
-        Layer.__init__(self, *args, **kwargs)
-        self.__subscribe_dict = {}
-        # start
-
-    def __on_upstream_message_wrapper(self, message):
-        print(message.name)
-        if message.name in self.__subscribe_dict.keys():
-            self.__subscribe_dict[message.type](message)
-        else:
-            self.on_upstream_message(message)
-
-    def subscribe(self, result_name, func):
-        """Putting functions to subscribe list"""
-        self.__subscribe_dict[result_name] = func

@@ -1,4 +1,4 @@
-from layers.Layer import LayerWithSubscribe
+from layers.Layer import Layer
 from mtproto.Message import Message
 from mtproto import crypt_tools
 from mtproto import prime
@@ -9,45 +9,56 @@ import queue
 import os
 import io
 
-class SessionLayer(LayerWithSubscribe):
+
+class SessionLayer(Layer):
     """ Manages encryption and message frames """
     def __init__(self, auth_key=None, server_salt=None, underlying_layer=None):
-        LayerWithSubscribe.__init__(self, name="Session Layer", underlying_layer=underlying_layer)
+        Layer.__init__(self, name="Session Layer", underlying_layer=underlying_layer)
         self.seq_no = 0
         self.timedelta = 0
         self.session_id = os.urandom(8)
-        self.subs_queue = queue.Queue()
+        self.__subscribe_dict = {}
 
         self.subscribe('NewSession', self.new_session_created)
+
         # creating and starting data exchange threads
         self.auth_key, self.server_salt = auth_key, server_salt
         if auth_key is None or server_salt is None:
             self.auth_key, self.server_salt = self.create_auth_key()
         self.auth_key_id = self.create_auth_key_id()
+
+        # Propagate authorization to Crypt layer
         self.propagate_auth(self.auth_key, self.server_salt)
 
+    def subscribe(self, type_, func):
+        self.__subscribe_dict[type_] = func
+
+    def on_upstream_message(self, message):
+        if message.body.type in self.__subscribe_dict.keys():
+            self.__subscribe_dict[message.body.type](message)
+
     def new_session_created(self, message):
-        print(message)
+        print(message.body.params)
 
     def propagate_auth(self, auth_key, server_salt):
         self.underlying_layer.propagate_auth(auth_key, server_salt)
 
-    def wait_for_answer(self, name, timeout=5):
-        q = queue.Queue()
-        print("   Waiting for %s" % name)
-        def got_it(server_answer):
-            q.put(server_answer)
-        self.subscribe(name, got_it)
-        try:
-            return q.get(timeout=timeout)
-        except queue.Empty:
-            return None
-
     def method_call(self, predicate, **kwargs):
-        return_type = TL.tl.method_name[predicate].type
-        self.send(TL.Method(predicate, return_type, kwargs))
-        answer = self.wait_for_answer(return_type)
-        return answer.body
+        for i in range(5):
+            return_type = TL.tl.method_name[predicate].type
+            self.send(TL.Method(predicate, return_type, kwargs))
+            q = queue.Queue()
+            print("   Waiting for '%s' answer" % return_type)
+
+            def got_it(server_answer):
+                q.put(server_answer)
+
+            self.subscribe(return_type, got_it)
+            try:
+                return q.get(timeout=1.0).body
+            except queue.Empty:
+                pass
+        raise Exception("Session: Can't get answer on method %s" % predicate)
 
     def set_auth_key(self, auth_key):
         self.auth_key = auth_key
@@ -181,7 +192,7 @@ class SessionLayer(LayerWithSubscribe):
                 return auth_key_str, server_salt
             elif set_client_dh_params_answer.name == 'dh_gen_retry':
                 assert set_client_dh_params_answer['new_nonce_hash2'] == new_nonce_hash2
-                print ("Retry Auth")
+                print("Retry Auth")
             elif set_client_dh_params_answer.name == 'dh_gen_fail':
                 assert set_client_dh_params_answer['new_nonce_hash3'] == new_nonce_hash3
                 print("Auth Failed")
