@@ -3,7 +3,7 @@ from mtproto.Message import Message
 from mtproto import crypt_tools
 from mtproto import prime
 from mtproto import TL
-from time import time, sleep
+from time import time, sleep, asctime
 
 import queue
 import os
@@ -36,7 +36,7 @@ class SessionLayer(Layer):
         # Acquire session ID and get future salts:
 
     def on_upstream_message(self, message):
-        print("Session: got message %s" % message.body.type)
+        #print("Session: got message %s" % message.body.type)
         if message.body.type in self.__subscribe_dict.keys():
             func = self.__subscribe_dict[message.body.type]
             func(message)
@@ -65,7 +65,7 @@ class SessionLayer(Layer):
     def update_session_salt(self):
         # updating future salts in case if it is empty or last future_salt used
         if not self.future_salts or self.future_salts[-1]['valid_since'] <= time():
-            future_salts_msg = self.method_call("get_future_salts", num=3)
+            future_salts_msg = self.method_call("get_future_salts", num=10)
             print("Session: got future salts" + str(future_salts_msg))
             for salt in future_salts_msg['salts']:
                 self.future_salts.append(salt.params)
@@ -73,7 +73,7 @@ class SessionLayer(Layer):
         for future_salt in self.future_salts[::-1]:
             if future_salt['valid_since'] <= time() <= future_salt['valid_until']:
                 if self.server_salt != future_salt['salt']:
-                    print("Session: Salt updated")
+                    print("Session: Salt updated, " + asctime())
                     self.server_salt = future_salt['salt']
                 break
 
@@ -90,7 +90,7 @@ class SessionLayer(Layer):
                           msg_id=message_id,
                           seq_no=self.seq_no,
                           message_body=tl_object)
-        print("Session: send message %s" % tl_object.predicate)
+        #print("Session: send message %s" % tl_object.predicate)
         self.to_lower(message)
 
     def create_auth_key(self):
