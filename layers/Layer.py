@@ -32,11 +32,9 @@ class Layer:
         self.to_lower(message)
 
     def to_upper(self, message):
-        """Override me. Provides dummy functionality on default."""
         self.upstream_queue.put(message)
 
     def to_lower(self, message):
-        """Override me. Provides dummy functionality on default."""
         self.underlying_layer.downstream_queue.put(message)
 
     def run(self):
@@ -62,7 +60,3 @@ class WaitingProcess(threading.Thread):
             except queue.Empty:
                 # nothing in the queue. Do nothing
                 pass
-            except AttributeError:
-                # Queue does not exist
-                # Stop waiting
-                return

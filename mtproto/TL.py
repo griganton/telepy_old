@@ -69,9 +69,8 @@ def serialize_obj(type_, **kwargs):
         raise Exception("Could not extract type: %s" % type_)
     bytes_io.write(struct.pack('<i', tl_constructor.id))
     for arg in tl_constructor.params:
-        serialize_param(bytes_io, type_=arg['type'],  value=kwargs[arg['name']])
+        serialize_param(bytes_io, type_=arg['type'], subtype=arg['subtype'], value=kwargs[arg['name']])
     return bytes_io.getvalue()
-
 
 def serialize_method(type_, **kwargs):
     bytes_io = io.BytesIO()
@@ -81,11 +80,11 @@ def serialize_method(type_, **kwargs):
         raise Exception("Could not extract type: %s" % type_)
     bytes_io.write(struct.pack('<i', tl_method.id))
     for arg in tl_method.params:
-        serialize_param(bytes_io, type_=arg['type'], value=kwargs[arg['name']])
+        serialize_param(bytes_io, arg['type'], None, value=kwargs[arg['name']])
     return bytes_io.getvalue()
 
 
-def serialize_param(bytes_io, type_, value):
+def serialize_param(bytes_io, type_, subtype, value):
     if type_ == "int":
         assert isinstance(value, Number)
         assert value.bit_length() <= 32
@@ -107,6 +106,11 @@ def serialize_param(bytes_io, type_, value):
             bytes_io.write(struct.pack('<i', l)[:3])  # 3 bytes of string
             bytes_io.write(value) # string
             bytes_io.write(b'\x00'*(-l % 4))  # padding bytes
+    elif type_ == 'vector':
+        assert isinstance(value, list)
+        bytes_io.write(struct.pack('<l', len(value)))
+        for element in value:
+            serialize_param(bytes_io, subtype, None, element)
 
 def deserialize(bytes_io, type_=None, subtype=None):
     """

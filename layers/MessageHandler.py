@@ -7,23 +7,9 @@ class MessageHandler(Layer):
     # https://core.telegram.org/mtproto/service_messages#packed-object
     # TODO: message acks
     # https://core.telegram.org/mtproto/service_messages_about_messages#acknowledgment-of-receipt
-    # TODO: message id buffer and checks
 
-    def propagate_auth(self, auth_key, server_salt):
-        self.underlying_layer.propagate_auth(auth_key, server_salt)
-
-    def __init__(self, underlying_layer=None):
-        Layer.__init__(self, underlying_layer=underlying_layer)
-        self.pending_acks = []
-
-    def on_downstream_message(self, message):
-        # TODO: attach pending message acks to downstream message
-        print("Message handler: sending message")
-        self.to_lower(message)
-
-    def on_upstream_message(self, message):
-        assert isinstance(message, Message)
-        if message.body.name == "msg_container":
+    def on_message_container(self, message):
+        if message.body.name == "MessageContainer":
             print("Message handler: Received container with contents:")
             for message_box in message.body['messages']:
                 # If we have got message container, we should unpack it to separate messages and send upper.
@@ -33,7 +19,7 @@ class MessageHandler(Layer):
                                            msg_id=message_box['msg_id'],
                                            seq_no=message_box['seqno'],
                                            message_body=message_box['body'])
-                self.to_upper(message_from_box)
+                self.to_self(message_from_box)
                 # Every message from container have to be acknowledged
                 if message_from_box.msg_id is not None:
                     self.pending_acks.append(message_from_box.msg_id)

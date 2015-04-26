@@ -20,9 +20,12 @@ ip = config.get('App data', 'ip_address')
 port = config.getint('App data', 'port')
 
 # collecting stack
-tcptransport = TCPTransportLayer(ip, port)
-cryptlayer = CryptLayer(underlying_layer=tcptransport)
-messagehandler = MessageHandler(underlying_layer=cryptlayer)
-session = SessionLayer(underlying_layer=messagehandler)
+tcp_transport = TCPTransportLayer(ip, port)
+crypt_layer = CryptLayer(underlying_layer=tcp_transport)
+session = SessionLayer(underlying_layer=crypt_layer)
 
-session.method_call("get_future_salts", num=3)
+i = 0
+while True:
+    session.method_call("ping", ping_id=i, disconnect_delay=5)
+    i += 1
+    sleep(2)

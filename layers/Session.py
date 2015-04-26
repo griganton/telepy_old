@@ -3,7 +3,7 @@ from mtproto.Message import Message
 from mtproto import crypt_tools
 from mtproto import prime
 from mtproto import TL
-from time import time
+from time import time, sleep
 
 import queue
 import os
@@ -13,73 +13,89 @@ import io
 class SessionLayer(Layer):
     """ Manages encryption and message frames """
     def __init__(self, auth_key=None, server_salt=None, underlying_layer=None):
-        Layer.__init__(self, name="Session Layer", underlying_layer=underlying_layer)
         self.seq_no = 0
         self.timedelta = 0
         self.session_id = os.urandom(8)
+        self.future_salts = []
         self.__subscribe_dict = {}
+        self.auth_key, self.server_salt = auth_key, server_salt
 
+        Layer.__init__(self, name="Session Layer", underlying_layer=underlying_layer)
         self.subscribe('NewSession', self.new_session_created)
+        self.subscribe('MessageContainer', self.on_message_container)
 
         # creating and starting data exchange threads
-        self.auth_key, self.server_salt = auth_key, server_salt
+
         if auth_key is None or server_salt is None:
             self.auth_key, self.server_salt = self.create_auth_key()
-        self.auth_key_id = self.create_auth_key_id()
+        self.auth_key_id = crypt_tools.SHA(self.auth_key)[-8:]
 
         # Propagate authorization to Crypt layer
-        self.propagate_auth(self.auth_key, self.server_salt)
+        self.underlying_layer.set_session_info(self.auth_key, self.server_salt)
 
-    def subscribe(self, type_, func):
-        self.__subscribe_dict[type_] = func
+        # Acquire session ID and get future salts:
 
     def on_upstream_message(self, message):
+        print("Session: got message %s" % message.body.type)
         if message.body.type in self.__subscribe_dict.keys():
-            self.__subscribe_dict[message.body.type](message)
+            func = self.__subscribe_dict[message.body.type]
+            func(message)
+        else:
+            self.to_upper(message)
 
     def new_session_created(self, message):
-        print(message.body.params)
-
-    def propagate_auth(self, auth_key, server_salt):
-        self.underlying_layer.propagate_auth(auth_key, server_salt)
+        print("Session: got new session from server")
+        self.server_salt = crypt_tools.long_to_bytes(message.body['server_salt'])
+        #self.session_id = crypt_tools.long_to_bytes(message.body['unique_id'])
+        self.seq_no = 0
 
     def method_call(self, predicate, **kwargs):
-        for i in range(5):
-            return_type = TL.tl.method_name[predicate].type
-            self.send(TL.Method(predicate, return_type, kwargs))
-            q = queue.Queue()
-            print("   Waiting for '%s' answer" % return_type)
+        return_type = TL.tl.method_name[predicate].type
+        self.send(TL.Method(predicate, return_type, kwargs))
+        q = queue.Queue()
+        # print("   Waiting for '%s' answer" % return_type)
+        def got_it(server_answer):
+            q.put(server_answer)
+        self.subscribe(return_type, got_it)
+        try:
+            return q.get(timeout=2.0).body
+        except queue.Empty:
+            print("Session: Can't get answer %s on method %s" % (return_type, predicate))
 
-            def got_it(server_answer):
-                q.put(server_answer)
+    def update_session_salt(self):
+        # updating future salts in case if it is empty or last future_salt used
+        if not self.future_salts or self.future_salts[-1]['valid_since'] <= time():
+            future_salts_msg = self.method_call("get_future_salts", num=3)
+            print("Session: got future salts" + str(future_salts_msg))
+            for salt in future_salts_msg['salts']:
+                self.future_salts.append(salt.params)
 
-            self.subscribe(return_type, got_it)
-            try:
-                return q.get(timeout=1.0).body
-            except queue.Empty:
-                pass
-        raise Exception("Session: Can't get answer on method %s" % predicate)
+        for future_salt in self.future_salts[::-1]:
+            if future_salt['valid_since'] <= time() <= future_salt['valid_until']:
+                if self.server_salt != future_salt['salt']:
+                    print("Session: Salt updated")
+                    self.server_salt = future_salt['salt']
+                break
 
-    def set_auth_key(self, auth_key):
-        self.auth_key = auth_key
-        self.auth_key_id = crypt_tools.SHA(self.auth_key)[-8:] if self.auth_key else None
-
-    def create_auth_key_id(self):
-        # TODO: docstring
-        return crypt_tools.SHA(self.auth_key)[-8:]
+    def run(self):
+        while True:
+            if self.auth_key is not None:
+                self.update_session_salt()
+            sleep(60)
 
     def send(self, tl_object):
         message_id = int((time() + self.timedelta)*2**30)*4
+        # Select salt
         message = Message(session_id=self.session_id,
                           msg_id=message_id,
                           seq_no=self.seq_no,
                           message_body=tl_object)
-        print("Session: send message %s type" % tl_object.return_type)
+        print("Session: send message %s" % tl_object.predicate)
         self.to_lower(message)
 
     def create_auth_key(self):
         nonce = os.urandom(16)
-        print("Requesting pq")
+        print("Session: Requesting pq")
 
         ResPQ = self.method_call('req_pq', nonce=nonce)
         server_nonce = ResPQ['server_nonce']
@@ -144,7 +160,7 @@ class SessionLayer(Layer):
         g_a_str = server_DH_inner_data['g_a']
         server_time = server_DH_inner_data['server_time']
         self.timedelta = server_time - time()
-        print("Server-client time delta = %.1f s" % self.timedelta)
+        print("Session: Server-client time delta = %.1f s" % self.timedelta)
 
         dh_prime = crypt_tools.bytes_to_long(dh_prime_str)
         g_a = crypt_tools.bytes_to_long(g_a_str)
@@ -185,17 +201,32 @@ class SessionLayer(Layer):
 
             if set_client_dh_params_answer.name == 'dh_gen_ok':
                 assert set_client_dh_params_answer['new_nonce_hash1'] == new_nonce_hash1
-                print("Diffie Hellman key exchange processed successfully")
+                print("Session: Diffie Hellman key exchange processed successfully")
 
                 server_salt = crypt_tools.strxor(new_nonce[0:8], server_nonce[0:8])
-                print("Auth key generated")
+                print("Session: Auth key generated")
                 return auth_key_str, server_salt
             elif set_client_dh_params_answer.name == 'dh_gen_retry':
                 assert set_client_dh_params_answer['new_nonce_hash2'] == new_nonce_hash2
-                print("Retry Auth")
+                print("Session: Retry Auth")
             elif set_client_dh_params_answer.name == 'dh_gen_fail':
                 assert set_client_dh_params_answer['new_nonce_hash3'] == new_nonce_hash3
-                print("Auth Failed")
+                print("Session: Auth Failed")
                 raise Exception("Auth Failed")
             else:
                 raise Exception("Response Error")
+
+    def on_message_container(self, message):
+        print("Session: Received container with contents:")
+        for message_box in message.body['messages']:
+            # If we have got message container, we should unpack it to separate messages and send upper.
+            # So, if message container is empty, nothing will be sent upper.
+            print("       - %s" % message_box['body'].type)
+            message_from_box = Message(session_id=message.session_id,
+                                       msg_id=message_box['msg_id'],
+                                       seq_no=message_box['seqno'],
+                                       message_body=message_box['body'])
+            self.underlying_layer.upstream_queue.put(message_from_box)
+
+    def subscribe(self, type_, func):
+        self.__subscribe_dict[type_] = func

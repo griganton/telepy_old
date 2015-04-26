@@ -25,12 +25,8 @@ class CryptLayer(Layer):
         self.auth_key_id = None
         self.server_salt = None
 
-    def propagate_auth(self, auth_key, server_salt):
-        print("CryptLayer: Writing auth info")
-        self.set_session_info(auth_key, server_salt)
-
     def set_session_info(self, auth_key, server_salt):
-        print("CryptLayer: got session parameters. Start sending crypted messages")
+        # print("CryptLayer: got session parameters. Start sending crypted messages")
         self.auth_key = auth_key
         self.auth_key_id = SHA(self.auth_key)[-8:] if self.auth_key else None
         self.server_salt = server_salt
@@ -49,13 +45,13 @@ class CryptLayer(Layer):
 
         if self.auth_key is None:
             # Unencrypted data send
-            print("CryptLayer: sending plaintext message")
+            # print("CryptLayer: sending plaintext message")
             message_bytes = (b'\x00\x00\x00\x00\x00\x00\x00\x00' +
                              struct.pack('<QI', message.msg_id, len(message_data)) +
                              message_data)
         else:
             # Encrypted data send
-            print("CryptLayer: sending crypted message")
+            # print("CryptLayer: sending crypted message")
             encrypted_data = (self.server_salt +
                               message.session_id +
                               struct.pack('<QII',  message.msg_id, message.seq_no, len(message_data)) +
@@ -74,7 +70,7 @@ class CryptLayer(Layer):
         auth_key_id = packet[0:8]
         if auth_key_id == b'\x00\x00\x00\x00\x00\x00\x00\x00':
             # No encryption - Plain text
-            print("CryptLayer: received plaintext message")
+            # print("CryptLayer: received plaintext message")
             (message_id, message_length) = struct.unpack("<8sI", packet[8:20])
             data = packet[20:20+message_length]
 
@@ -99,7 +95,7 @@ class CryptLayer(Layer):
             seq_no = struct.unpack("<I", decrypted_data[24:28])[0]
             message_data_length = struct.unpack("<I", decrypted_data[28:32])[0]
             data = decrypted_data[32:32+message_data_length]
-            print("CryptLayer: received crypted message")
+            # print("CryptLayer: received crypted message")
             # deserializing data
             answer = Message.deserialize(data)
 
