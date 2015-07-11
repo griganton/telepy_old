@@ -70,3 +70,6 @@ prime.py is used in PQ factorization. It has been copied from https://stackoverf
 ## TL schema
 We use JSON format TL Shema. TL Schema file contains information about objects and methods, it is located in TL_schema.JSON file in the root of repo. It is fully equivalent to JSON TL Schema from
 https://core.telegram.org/schema/mtproto-json
+
+### Troubleshooting
+- bad magic number error : `find . -name "*.pyc" -delete`
