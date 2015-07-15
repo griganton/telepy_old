@@ -113,7 +113,7 @@ class SessionLayer(Layer):
         print("Factorization %d = %d * %d" % (pq, p, q))
         p_bytes = crypt_tools.long_to_bytes(p)
         q_bytes = crypt_tools.long_to_bytes(q)
-        f = open(os.path.join(os.path.dirname(__file__), "rsa.pub"))
+        f = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "rsa.pub"))
         key = crypt_tools.RSA.importKey(f.read())
 
         new_nonce = os.urandom(32)
